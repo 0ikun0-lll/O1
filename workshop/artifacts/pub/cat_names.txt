@@ -1,0 +1,11 @@
+fulfillment_mode_cat
+supplier_region_cat
+supplier_layer_cat
+shop_level_cat
+shop_main_cate_cat
+cate_group_cat
+cate_code_cat
+score_band_cat
+onsale_band_cat
+follow_band_cat
+register_batch_cat

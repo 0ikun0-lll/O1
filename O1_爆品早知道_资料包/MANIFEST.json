@@ -1,0 +1,70 @@
+{
+  "README.md": {
+    "bytes": 42354,
+    "sha256": "2b7d0ff72e8b4ba65f0bdb4f0c91bcccae9ec691803644329f0590fde3eaac16"
+  },
+  "audit_reason_dict.csv": {
+    "bytes": 842,
+    "sha256": "0d08ca6eee0cba007697f0b0f29fcd29c2224ecb1e2bb9706cf15a5afdeffcd6"
+  },
+  "baseline.py": {
+    "bytes": 4120,
+    "sha256": "6c3e9c3d4ab5bc1f1689a710ee92481f89c1223a8bea9491ff46e69b0d06ab3f"
+  },
+  "baseline_scores.csv": {
+    "bytes": 2562971,
+    "sha256": "be9c8ca843d5448342ca0415eb33a721773a0e5af952822645c6827027058b89"
+  },
+  "category_trend.csv": {
+    "bytes": 158303,
+    "sha256": "ebc7fe7ad39968bbec8c643c74e1e205ca5aea1cfb8059d3b4dc16e84d49119c"
+  },
+  "cost_matrix.csv": {
+    "bytes": 135,
+    "sha256": "85da72f0f42ae10a28b8a54f07b34b0ebe03987bd895cbb525bbef38c5e2f25c"
+  },
+  "data_dictionary.md": {
+    "bytes": 14580,
+    "sha256": "ae091bbddac34f30e36e55108dba484b8984e0770ad3dde9a149458c7afe3986"
+  },
+  "evaluate.py": {
+    "bytes": 21490,
+    "sha256": "82ef19f47822ec3cf8c3a1cc9e95c9e86eed45843cf7d27c07bb94425d89a725"
+  },
+  "human_review_sample.csv": {
+    "bytes": 17112,
+    "sha256": "f0c980b3f9730e961d48ee9d54a3adfb6f11fa802c552b40877999fe62d19ff0"
+  },
+  "make_local_datadir.py": {
+    "bytes": 6885,
+    "sha256": "a38c040ecc6e0bf22d98139ffc8faa29f8282c5674104dc4d66a6d94dfc38d1a"
+  },
+  "predict.py": {
+    "bytes": 2827,
+    "sha256": "eb2176699f8095f55663c2a57be0d0b2dc6d72ec9eb22aa6e9c363776ed48d44"
+  },
+  "sample_submission_public.csv": {
+    "bytes": 72024,
+    "sha256": "d055cc8a36f1f1b32b58c72aa4d84f0e4b685e73869ccb8fcbb475146e61828c"
+  },
+  "shop.csv": {
+    "bytes": 116142,
+    "sha256": "2eabf1eea1ba81fa6b58b188655939567ed46daf614f759e8cd2da5e6db9a38a"
+  },
+  "shop_hist_monthly.csv": {
+    "bytes": 868183,
+    "sha256": "e80fe229dcc6f97347693dbb90db2959687275416e865683d393e313362484e0"
+  },
+  "test_public.csv": {
+    "bytes": 627624,
+    "sha256": "8db9c4a2cf1cbb48871ff39e107ad9c93fe3a5b8270277ffe8ef20f0f04eb62d"
+  },
+  "train.csv": {
+    "bytes": 4144344,
+    "sha256": "498e1725123828efd70460c85f0c621cf23b34407041714a18ce231f168922b7"
+  },
+  "validate_submission.py": {
+    "bytes": 3939,
+    "sha256": "c17f16477aaf14fa8832a3e080e3b17fc1762098453124b12f47d687ec26ea29"
+  }
+}
