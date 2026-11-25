@@ -34,9 +34,7 @@ def main():
     train = F.attach_external(train, shop, shop_hist, cat_trend)
     test = F.attach_external(test, shop, shop_hist, cat_trend)
 
-    pl = P.ModelPipeline(n_folds=4)
-    pl.fit(train)
-    score, decision = pl.predict(test)
+    score, decision = P.final_predict(train, test)
 
     with open(args.out, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)

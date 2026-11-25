@@ -17,13 +17,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--model", choices=["lgb", "xgb"], default="lgb")
     args = ap.parse_args()
 
     train, test, shop, shop_hist, cat_trend = F.load_tables(args.data_dir)
     train = F.attach_external(train, shop, shop_hist, cat_trend)
     test = F.attach_external(test, shop, shop_hist, cat_trend)
 
-    pl = P.ModelPipeline()
+    if args.model == "xgb":
+        pl = P.XgbPipeline()
+    else:
+        pl = P.ModelPipeline()
     pl.fit(train)
     print("OOF 决策损失 L=%.4f  温度 T=%.3f  边际 m_ft=%.2f m_ot=%.2f"
           % (pl.oof_loss, pl.T, pl.m_ft, pl.m_ot))

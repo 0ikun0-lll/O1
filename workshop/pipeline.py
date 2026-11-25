@@ -10,6 +10,7 @@
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
+import xgboost as xgb
 from sklearn.model_selection import KFold
 
 import features as F
@@ -93,6 +94,23 @@ DEFAULT_PARAMS = dict(
 )
 
 
+DEFAULT_XGB_PARAMS = dict(
+    objective="multi:softprob",
+    num_class=5,
+    n_estimators=300,
+    learning_rate=0.05,
+    max_depth=5,
+    subsample=0.9,
+    colsample_bytree=0.8,
+    reg_alpha=0.1,
+    reg_lambda=1.0,
+    random_state=0,
+    n_jobs=1,
+    tree_method="hist",
+    verbosity=0,
+)
+
+
 class ModelPipeline:
     def __init__(self, params=None, n_folds=5, seed=0, te_cols=None, n_svd=48, min_df=2):
         self.params = dict(params or DEFAULT_PARAMS)
@@ -152,3 +170,99 @@ class ModelPipeline:
         is_ft = (test_df["fulfillment_mode"].astype(str).str.strip() == "全托管").values
         decision = decisions_from_margins(allow, reject, is_ft, self.m_ft, self.m_ot)
         return score, decision
+
+
+class XgbPipeline:
+    """XGBoost 多分类：数值特征（含目标编码/文本 SVD）+ OOF 温度与边际校准。"""
+
+    def __init__(self, params=None, n_folds=4, seed=0, te_cols=None, n_svd=48, min_df=2):
+        self.params = dict(params or DEFAULT_XGB_PARAMS)
+        self.n_folds = n_folds
+        self.seed = seed
+        self.te_cols = list(te_cols) if te_cols is not None else list(F.TE_COLS)
+        self.n_svd = n_svd
+        self.min_df = min_df
+        self.fb = None
+        self.model = None
+        self.T = 1.0
+        self.m_ft = 0.0
+        self.m_ot = 0.0
+
+    def _numeric(self, X):
+        drop = [c for c in X.columns if c.endswith("_cat")]
+        return X.drop(columns=drop)
+
+    def fit(self, train_df):
+        self.fb = F.FeatureBuilder(
+            te_cols=self.te_cols, n_svd=self.n_svd, min_df=self.min_df,
+            n_folds=self.n_folds, seed=self.seed,
+        )
+        self.fb.fit(train_df)
+        X_train, y_gain = self.fb.transform_train(train_df)
+        self.X_train = X_train
+        self.y_gain = y_gain
+        tier = train_df["tier"].astype(str).str.strip()
+        self.y = tier.map(TIER_IDX).astype(np.int32).values
+        self.tier_codes = self.y.copy()
+        self.is_ft = (train_df["fulfillment_mode"].astype(str).str.strip() == "全托管").values
+
+        Xn = self._numeric(X_train)
+        self.oof_margin = self._oof_margins(Xn, self.y)
+        L, T, m_ft, m_ot = tune_decision(self.oof_margin, self.tier_codes, self.is_ft, self.seed)
+        self.T, self.m_ft, self.m_ot = T, m_ft, m_ot
+        self.oof_loss = L
+
+        self.model = xgb.XGBClassifier(**self.params)
+        self.model.fit(Xn, self.y)
+        return self
+
+    def _oof_margins(self, X, y):
+        margin = np.zeros((len(X), 5), dtype=np.float64)
+        kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.seed)
+        for tr, va in kf.split(X):
+            m = xgb.XGBClassifier(**self.params)
+            m.fit(X.iloc[tr], y[tr])
+            margin[va] = m.predict(X.iloc[va], output_margin=True)
+        return margin
+
+    def predict(self, test_df):
+        X_test = self.fb.transform_test(test_df)
+        Xn = self._numeric(X_test)
+        margin = self.model.predict(Xn, output_margin=True)
+        proba_rank = softmax(margin, 1.0)
+        proba_dec = softmax(margin, self.T)
+        score = expected_gain(proba_rank)
+        allow, reject = expected_costs(proba_dec)
+        is_ft = (test_df["fulfillment_mode"].astype(str).str.strip() == "全托管").values
+        decision = decisions_from_margins(allow, reject, is_ft, self.m_ft, self.m_ot)
+        return score, decision
+
+
+# 开发期在训练集 OOF 上定出的决策参数（终评运行时直接使用，不再做 OOF 训练）。
+FINAL_T = 1.0
+FINAL_M_FT = 0.25
+FINAL_M_OT = 0.0
+
+
+def final_predict(train_df, test_df, params=None, n_folds=4, seed=0):
+    """终评快速路径：特征 + 单个 XGBoost + 固化决策参数。"""
+    fb = F.FeatureBuilder(
+        te_cols=F.TE_COLS, n_svd=48, min_df=2, n_folds=n_folds, seed=seed,
+    )
+    fb.fit(train_df)
+    X_train, _ = fb.transform_train(train_df)
+    X_test = fb.transform_test(test_df)
+    drop = [c for c in X_train.columns if c.endswith("_cat")]
+    Xn = X_train.drop(columns=drop)
+    Xn_test = X_test.drop(columns=drop)
+    y = train_df["tier"].astype(str).str.strip().map(TIER_IDX).astype(np.int32).values
+
+    model = xgb.XGBClassifier(**(dict(params or DEFAULT_XGB_PARAMS)))
+    model.fit(Xn, y)
+    margin = model.predict(Xn_test, output_margin=True)
+    proba = softmax(margin, FINAL_T)
+    score = expected_gain(proba)
+    allow, reject = expected_costs(proba)
+    is_ft = (test_df["fulfillment_mode"].astype(str).str.strip() == "全托管").values
+    decision = decisions_from_margins(allow, reject, is_ft, FINAL_M_FT, FINAL_M_OT)
+    return score, decision
