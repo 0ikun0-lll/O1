@@ -74,6 +74,9 @@ NUM_COLS = [
     "demand_index",
     "demand_missing",
     "supply_log",
+    "demand_ratio",
+    "demand_slope",
+    "price_rel",
 ]
 
 FLAG_COLS = [
@@ -190,11 +193,18 @@ def attach_external(df, shop, shop_hist, cat_trend):
     )
     out = out.merge(ct_s, on=["cate_code", "batch_int"], how="left")
 
+    # 类目需求的滞后值与趋势（demand_lag1 = 上一批，lag2 = 上上批，均早于当前批次，允许）
+    for lag, col in [(1, "demand_lag1"), (2, "demand_lag2")]:
+        lagdf = ct[["cate_code", "batch_int", "demand_index"]].copy()
+        lagdf["batch_int"] = lagdf["batch_int"] + lag
+        lagdf = lagdf.rename(columns={"demand_index": col})
+        out = out.merge(lagdf, on=["cate_code", "batch_int"], how="left")
+
     out = out.drop(columns=["batch_int"])
     return out
 
 
-def _num_features(df):
+def _num_features(df, price_med=None):
     out = pd.DataFrame(index=df.index)
     price = _to_num(df["price"])
     out["price"] = price
@@ -226,6 +236,17 @@ def _num_features(df):
     out["demand_missing"] = out["demand_index"].isna().astype(np.int8)
     supply = _to_num(df.get("supply_count"))
     out["supply_log"] = np.log1p(supply.clip(lower=0.0))
+
+    demand = out["demand_index"]
+    lag1 = _to_num(df.get("demand_lag1"))
+    lag2 = _to_num(df.get("demand_lag2"))
+    out["demand_ratio"] = (demand / lag1.replace(0.0, np.nan)).clip(0.05, 20.0)
+    out["demand_slope"] = demand - lag2
+
+    if price_med is not None:
+        out["price_rel"] = price / price_med.replace(0.0, np.nan)
+    else:
+        out["price_rel"] = np.nan
     return out
 
 
@@ -258,7 +279,7 @@ class TextEncoder:
             sublinear_tf=True,
         )
         self.svd = TruncatedSVD(
-            n_components=n_components, algorithm="arpack", random_state=seed
+            n_components=n_components, algorithm="randomized", random_state=seed, n_iter=7
         )
 
     def fit(self, texts):
@@ -289,6 +310,7 @@ class FeatureBuilder:
         self.te_stats = {}  # col -> DataFrame(te_gain, te_pS, te_pA)
         self.te_priors = {}  # col -> (prior_gain, prior_pS, prior_pA)
         self.feature_names = None
+        self.cate_price_median = None
 
     @staticmethod
     def _targets(train_df):
@@ -315,6 +337,10 @@ class FeatureBuilder:
 
     def fit(self, train_df):
         train_df = train_df.reset_index(drop=True)
+        p = _to_num(train_df["price"])
+        med = p.groupby(train_df["cate_code"].astype(str).str.strip()).median()
+        self.cate_price_median = med
+        self.global_price_median = p.median()
         for c in self.cat_cols:
             enc = CatEncoder()
             enc.fit(train_df[c])
@@ -328,7 +354,11 @@ class FeatureBuilder:
         return self
 
     def _base_features(self, df):
-        num = _num_features(df)
+        med = None
+        if self.cate_price_median is not None:
+            med = df["cate_code"].astype(str).str.strip().map(self.cate_price_median)
+            med = med.fillna(self.global_price_median)
+        num = _num_features(df, med)
         for c in self.num_cols:
             if c not in num.columns:
                 num[c] = np.nan
