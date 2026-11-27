@@ -242,10 +242,11 @@ class XgbPipeline:
 FINAL_T = 1.0
 FINAL_M_FT = 0.25
 FINAL_M_OT = 0.0
+FINAL_SA_BLEND = 0.06
 
 
 def final_predict(train_df, test_df, params=None, n_folds=4, seed=0):
-    """终评快速路径：特征 + 单个 XGBoost + 固化决策参数。"""
+    """终评快速路径：五分类排序 + S/A 辅助排序 + 固化决策参数。"""
     fb = F.FeatureBuilder(
         te_cols=F.TE_COLS, n_svd=48, min_df=2, n_folds=n_folds, seed=seed,
     )
@@ -257,11 +258,27 @@ def final_predict(train_df, test_df, params=None, n_folds=4, seed=0):
     Xn_test = X_test.drop(columns=drop)
     y = train_df["tier"].astype(str).str.strip().map(TIER_IDX).astype(np.int32).values
 
-    model = xgb.XGBClassifier(**(dict(params or DEFAULT_XGB_PARAMS)))
+    base_params = dict(params or DEFAULT_XGB_PARAMS)
+    model = xgb.XGBClassifier(**base_params)
     model.fit(Xn, y)
     margin = model.predict(Xn_test, output_margin=True)
     proba = softmax(margin, FINAL_T)
-    score = expected_gain(proba)
+    base_score = expected_gain(proba)
+
+    # S/A 只参与排序修正，不参与放行/驳回决策。
+    binary_params = dict(base_params)
+    binary_params.pop("num_class", None)
+    binary_params["objective"] = "binary:logistic"
+    y_sa = np.isin(y, [TIER_IDX["S"], TIER_IDX["A"]]).astype(np.int32)
+    sa_model = xgb.XGBClassifier(**binary_params)
+    sa_model.fit(Xn, y_sa)
+    proba_sa = sa_model.predict_proba(Xn_test)[:, 1]
+    score = np.clip(
+        (1.0 - FINAL_SA_BLEND) * base_score + FINAL_SA_BLEND * proba_sa,
+        0.0,
+        1.0,
+    )
+
     allow, reject = expected_costs(proba)
     is_ft = (test_df["fulfillment_mode"].astype(str).str.strip() == "全托管").values
     decision = decisions_from_margins(allow, reject, is_ft, FINAL_M_FT, FINAL_M_OT)
